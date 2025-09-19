@@ -13,8 +13,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from .db import engine, init_db, get_session
-from .models import Item, Price, Target
+from .models import Item, Price, Target, Flag
 from .emailer import send_email
+from .scraping import fetch_listing
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -79,10 +80,82 @@ async def shutdown_event():
     scheduler.shutdown()
     logger.info("Scheduler shutdown")
 
-def check_all_items():
-    """Check all items for price updates (placeholder)."""
+async def check_all_items():
+    """Check all items for price updates."""
     logger.info("Checking all items for price updates...")
-    # TODO: Implement actual price scraping logic
+    
+    session = get_session()
+    try:
+        # Get all active items
+        statement = select(Item).where(Item.is_paused == False)
+        items = session.exec(statement).all()
+        
+        for item in items:
+            await check_single_item(item, session)
+            
+    except Exception as e:
+        logger.error(f"Error in check_all_items: {e}")
+    finally:
+        session.close()
+
+async def check_single_item(item: Item, session: Session):
+    """Check a single item for price updates."""
+    try:
+        # Fetch listing data
+        listing_data = await fetch_listing(item.url)
+        
+        # Update item with scraped data
+        if listing_data.get("title"):
+            item.title = listing_data["title"]
+        if listing_data.get("image_url"):
+            item.image_url = listing_data["image_url"]
+        if listing_data.get("site_name"):
+            item.site_name = listing_data["site_name"]
+        if listing_data.get("currency"):
+            item.currency = listing_data["currency"]
+        
+        item.updated_at = datetime.utcnow()
+        session.add(item)
+        
+        # Save price if found
+        price = listing_data.get("price")
+        if price is not None:
+            price_cents = int(price * 100)  # Convert to cents
+            price_record = Price(
+                item_id=item.id,
+                price_cents=price_cents,
+                currency=listing_data.get("currency", "USD"),
+                fetched_at=datetime.utcnow(),
+                source_confidence=1.0
+            )
+            session.add(price_record)
+            
+            logger.info(f"checked item={item.id} domain={item.domain} price={price} {listing_data.get('currency', 'USD')}")
+        else:
+            logger.info(f"checked item={item.id} domain={item.domain} price=None")
+        
+        # Save flags
+        flags = listing_data.get("flags", {})
+        if flags:
+            # Get or create flag record
+            flag_statement = select(Flag).where(Flag.item_id == item.id)
+            flag_record = session.exec(flag_statement).first()
+            
+            if not flag_record:
+                flag_record = Flag(item_id=item.id)
+            
+            if "free_shipping" in flags:
+                flag_record.free_shipping = flags["free_shipping"]
+            if "accepts_offers" in flags:
+                flag_record.accepts_offers = flags["accepts_offers"]
+            
+            session.add(flag_record)
+        
+        session.commit()
+        
+    except Exception as e:
+        logger.error(f"Error checking item {item.id}: {e}")
+        session.rollback()
 
 def send_daily_digest():
     """Send daily price digest email (placeholder)."""
@@ -166,7 +239,14 @@ async def add_item(
 
 @app.post("/check/now")
 async def check_now():
-    """Trigger immediate price check (placeholder)."""
+    """Trigger immediate price check for all items."""
     logger.info("Manual price check triggered")
-    return {"message": "Price check triggered", "status": "success"}
+    
+    try:
+        # Run the check in the background
+        await check_all_items()
+        return {"message": "Price check completed", "status": "success"}
+    except Exception as e:
+        logger.error(f"Error in manual price check: {e}")
+        return {"message": f"Price check failed: {str(e)}", "status": "error"}
 

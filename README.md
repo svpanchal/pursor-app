@@ -7,13 +7,15 @@ A minimal price tracking application built with FastAPI, SQLModel, and HTMX.
 - **Watchlist Management**: Add product URLs to track prices
 - **Price Targets**: Set target prices for items
 - **Real-time Updates**: HTMX-powered dynamic updates
-- **Scheduled Checks**: Hourly price checks and daily digests (placeholders)
+- **Web Scraping**: Adapter-based scraping with eBay support
+- **Scheduled Checks**: Hourly price checks and daily digests
 - **Email Notifications**: Gmail SMTP integration (placeholder)
 
 ## Tech Stack
 
 - **Backend**: FastAPI, SQLModel (SQLite)
 - **Frontend**: Jinja2 templates, Tailwind CSS (CDN), HTMX
+- **Scraping**: Playwright with adapter pattern (eBay + Generic)
 - **Scheduler**: APScheduler for background tasks
 - **Email**: Gmail SMTP integration
 
@@ -24,26 +26,32 @@ A minimal price tracking application built with FastAPI, SQLModel, and HTMX.
    pip3 install -r requirements.txt
    ```
 
-2. **Configure Environment** (optional):
+2. **Install Playwright Browser**:
+   ```bash
+   python -m playwright install chromium
+   ```
+
+3. **Configure Environment** (optional):
    ```bash
    cp .env.example .env
    # Edit .env with your Gmail credentials if you want email functionality
    ```
 
-3. **Run the Application**:
+4. **Run the Application**:
    ```bash
    uvicorn app.main:app --reload
    ```
 
-4. **Open in Browser**:
+5. **Open in Browser**:
    Visit [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
 ## Usage
 
 1. **Add Items**: Enter a product URL in the form and optionally set a target price
 2. **View Watchlist**: See all tracked items with their current status
-3. **Check Prices**: Click "Check Now" to trigger manual price checks
+3. **Check Prices**: Click "Check Now" to trigger manual price checks (scrapes real data)
 4. **Set Targets**: Add target prices to get notified when items reach your desired price
+5. **Supported Sites**: eBay (with price extraction) and any site (generic metadata)
 
 ## API Endpoints
 
