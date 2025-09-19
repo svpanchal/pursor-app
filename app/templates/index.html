@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <div class="flex justify-between items-center">
+            <h2 class="text-xl font-semibold text-gray-900">Watchlist</h2>
+            <button 
+                hx-post="/check/now" 
+                hx-trigger="click"
+                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+            >
+                Check Now
+            </button>
+        </div>
+    </div>
+    
+    <!-- Add URL Form -->
+    <div class="px-6 py-4 border-b border-gray-200">
+        <form hx-post="/items" hx-target="#watchlist-body" hx-swap="innerHTML">
+            <div class="flex gap-4">
+                <div class="flex-1">
+                    <input 
+                        type="url" 
+                        name="url" 
+                        placeholder="Enter product URL..." 
+                        required
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                </div>
+                <div class="w-32">
+                    <input 
+                        type="number" 
+                        name="target" 
+                        placeholder="Target price (cents)" 
+                        step="1"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                </div>
+                <button 
+                    type="submit"
+                    class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                >
+                    Add URL
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Watchlist Table -->
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Site</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Δ since added</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sparkline</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="watchlist-body" class="bg-white divide-y divide-gray-200">
+                {% for item in items %}
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            {% if item.image_url %}
+                            <img class="h-10 w-10 rounded-lg object-cover mr-3" src="{{ item.image_url }}" alt="{{ item.title }}">
+                            {% endif %}
+                            <div>
+                                <div class="text-sm font-medium text-gray-900">
+                                    {{ item.title or item.url }}
+                                </div>
+                                <div class="text-sm text-gray-500">
+                                    {{ item.domain }}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {{ item.site_name or item.domain }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {% if item.prices %}
+                            ${{ "%.2f"|format(item.prices[0].price_cents / 100) }}
+                        {% else %}
+                            <span class="text-gray-400">No price</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span class="text-gray-400">-</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {% if item.targets %}
+                            ${{ "%.2f"|format(item.targets[0].target_cents / 100) }}
+                        {% else %}
+                            <span class="text-gray-400">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span class="text-gray-400">-</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button class="text-red-600 hover:text-red-900">Remove</button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="px-6 py-12 text-center text-gray-500">
+                        <div class="text-lg font-medium mb-2">No items in your watchlist yet</div>
+                        <div class="text-sm">Add a product URL above to start tracking prices</div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
