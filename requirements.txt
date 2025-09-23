@@ -7,3 +7,4 @@ python-multipart==0.0.6
 APScheduler==3.10.4
 pytz==2023.3
 playwright==1.35.0
+python-multipart==0.0.9

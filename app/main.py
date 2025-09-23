@@ -162,26 +162,72 @@ def send_daily_digest():
     logger.info("Sending daily price digest...")
     # TODO: Implement daily digest logic
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request, session: Session = Depends(get_session)):
-    """Render the main watchlist page."""
-    # Get all items with their latest prices and targets
+def build_watchlist_rows(session: Session) -> List[dict]:
+    """Build enhanced rows for the watchlist table."""
+    # Get all items
     statement = select(Item).order_by(Item.created_at.desc())
     items = session.exec(statement).all()
     
-    # For each item, get the latest price and target
+    # Build enhanced rows with price calculations
+    rows = []
     for item in items:
-        # Get latest price
-        price_statement = select(Price).where(Price.item_id == item.id).order_by(Price.fetched_at.desc()).limit(1)
-        item.prices = session.exec(price_statement).all()
+        # Get ordered price history (oldest→newest)
+        price_statement = select(Price).where(Price.item_id == item.id).order_by(Price.fetched_at.asc())
+        prices = session.exec(price_statement).all()
         
         # Get target
         target_statement = select(Target).where(Target.item_id == item.id).limit(1)
-        item.targets = session.exec(target_statement).all()
+        target = session.exec(target_statement).first()
+        
+        # Compute price metrics
+        current_cents = prices[-1].price_cents if prices else None
+        first_cents = prices[0].price_cents if prices else None
+        
+        # Calculate delta percentage
+        delta_pct_str = "—"
+        if current_cents and first_cents and first_cents > 0:
+            delta_pct = ((current_cents - first_cents) / first_cents) * 100
+            delta_pct_str = f"{delta_pct:+.1f}%"
+        
+        # Build sparkline data (last up to 10 values)
+        sparkline_labels = []
+        sparkline_values = []
+        if prices:
+            # Take last 10 prices
+            recent_prices = prices[-10:]
+            sparkline_labels = [str(i) for i in range(len(recent_prices))]
+            sparkline_values = [float(price.price_cents) / 100.0 for price in recent_prices]  # Convert to USD
+        
+        sparkline = {
+            "labels": sparkline_labels,
+            "data": sparkline_values
+        }
+        
+        # Build row data
+        row = {
+            "id": item.id,
+            "url": item.url,
+            "domain": item.domain,
+            "title": item.title or item.url,
+            "site_name": item.site_name or item.domain,
+            "image_url": item.image_url,
+            "current_cents": current_cents,
+            "target_cents": target.target_cents if target else None,
+            "delta_pct": delta_pct_str,
+            "sparkline": sparkline
+        }
+        rows.append(row)
+    
+    return rows
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request, session: Session = Depends(get_session)):
+    """Render the main watchlist page."""
+    rows = build_watchlist_rows(session)
     
     return templates.TemplateResponse("index.html", {
         "request": request,
-        "items": items
+        "rows": rows
     })
 
 @app.post("/items", response_class=HTMLResponse)
@@ -217,24 +263,43 @@ async def add_item(
         session.add(target_obj)
         session.commit()
     
-    # Get updated items list
-    statement = select(Item).order_by(Item.created_at.desc())
-    items = session.exec(statement).all()
+    # Build updated rows and return the full table for HTMX
+    rows = build_watchlist_rows(session)
     
-    # For each item, get the latest price and target
-    for item in items:
-        # Get latest price
-        price_statement = select(Price).where(Price.item_id == item.id).order_by(Price.fetched_at.desc()).limit(1)
-        item.prices = session.exec(price_statement).all()
-        
-        # Get target
-        target_statement = select(Target).where(Target.item_id == item.id).limit(1)
-        item.targets = session.exec(target_statement).all()
-    
-    # Return just the table body for HTMX
-    return templates.TemplateResponse("partials/table_body.html", {
+    return templates.TemplateResponse("partials/watchlist_table.html", {
         "request": request,
-        "items": items
+        "rows": rows
+    })
+
+@app.delete("/items/{item_id}", response_class=HTMLResponse)
+async def remove_item(
+    request: Request,
+    item_id: int,
+    session: Session = Depends(get_session)
+):
+    """Remove an item from the watchlist."""
+    # Find the item
+    statement = select(Item).where(Item.id == item_id)
+    item = session.exec(statement).first()
+    
+    if item:
+        # Delete related records first
+        session.exec(select(Price).where(Price.item_id == item_id)).all()
+        session.exec(select(Target).where(Target.item_id == item_id)).all()
+        session.exec(select(Flag).where(Flag.item_id == item_id)).all()
+        
+        # Delete the item
+        session.delete(item)
+        session.commit()
+        
+        logger.info(f"Removed item {item_id}")
+    
+    # Build updated rows and return the full table for HTMX
+    rows = build_watchlist_rows(session)
+    
+    return templates.TemplateResponse("partials/watchlist_table.html", {
+        "request": request,
+        "rows": rows
     })
 
 @app.post("/check/now")
